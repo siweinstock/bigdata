@@ -1,10 +1,23 @@
 package bigdatacourse.hw2.studentcode;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
 import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import com.datastax.oss.driver.api.core.CqlSession;
+import com.datastax.oss.driver.api.core.cql.BoundStatement;
+import com.datastax.oss.driver.api.core.cql.PreparedStatement;
+import com.datastax.oss.driver.api.core.cql.ResultSet;
+import com.datastax.oss.driver.api.core.cql.Row;
 
 import bigdatacourse.hw2.HW2API;
 
@@ -16,11 +29,42 @@ public class HW2StudentAnswer implements HW2API{
 	// CQL stuff
 	//TODO: add here create table and query designs 
 	
+	// items table
+	public static final String ITEMS_TABLE_CREATE = "CREATE TABLE items (\n"
+			+ "asin text,\n"
+			+ "title text,\n"
+			+ "image text,\n"
+			+ "categories set<text>,\n"
+			+ "description text,\n"
+			+ "PRIMARY KEY (asin)\n"
+			+ ");";
+	
+	public static final String ITEMS_INSERT = "INSERT INTO items(asin, title, image, categories, description) VALUES (?, ?, ?, ?, ?)";
+	public static final String ITEMS_SELECT = "SELECT asin, title, image, categories, description FROM items WHERE asin = (?)";
+	
+	
 	// cassandra session
 	private CqlSession session;
 	
 	// prepared statements
 	//TODO: add here prepared statements variables
+	PreparedStatement pItemInsert;
+	PreparedStatement pItemSelect;
+	
+	
+	// insert one item
+	private void insertItem(PreparedStatement pstmt, String asin, String title, String image, Set<String> categories, String description) {
+		BoundStatement bstmt = pItemInsert.bind()
+				.setString(0, asin)
+				.setString(1, title)
+				.setString(2, image)
+				.setSet(3, categories, String.class)	// we know set<text> is not recommended but we used it since the # of cat is bounded and not expected to change often (if at all)
+				.setString(4, description);
+		
+		// async
+		session.executeAsync(bstmt);
+	}
+	
 	
 	
 	@Override
@@ -60,18 +104,85 @@ public class HW2StudentAnswer implements HW2API{
 	public void createTables() {
 		//TODO: implement this function
 		System.out.println("TODO: implement this function...");
+		
+		session.execute(ITEMS_TABLE_CREATE);
+		
 	}
 
 	@Override
 	public void initialize() {
 		//TODO: implement this function
 		System.out.println("TODO: implement this function...");
+		
+		pItemInsert = session.prepare(ITEMS_INSERT);
+		pItemSelect = session.prepare(ITEMS_SELECT);
 	}
 
 	@Override
 	public void loadItems(String pathItemsFile) throws Exception {
 		//TODO: implement this function
 		System.out.println("TODO: implement this function...");
+		
+		JSONObject item = new JSONObject();
+		File file = new File(pathItemsFile);
+		FileReader fr = new FileReader(file);
+		BufferedReader br = new BufferedReader(fr);
+		StringBuffer sb = new StringBuffer();
+		String line;
+		
+		Set<String> categories = new HashSet<>();
+		String asin;
+		String title;
+		String image;
+		String description;
+		int count = 0;
+		
+		while ((line = br.readLine()) != null) {
+			count++;
+			System.out.print(count + ": ");
+			categories.clear();
+			sb.append(line);
+			System.out.println(sb.toString());
+			item = new JSONObject(sb.toString());
+//			System.out.println(item.toString(4));
+			
+			asin = item.getString("asin"); // UID must be present, no need for try block
+			
+			try {
+				title = item.getString("title");
+			}
+			catch (org.json.JSONException e) {
+				title = NOT_AVAILABLE_VALUE;
+			}
+			
+			try {
+				image = item.getString("imUrl");
+			}
+			catch (org.json.JSONException e) {
+				image = NOT_AVAILABLE_VALUE;
+			}
+			
+			try {
+				description = item.getString("description");
+			}
+			catch (org.json.JSONException e) {
+				description = NOT_AVAILABLE_VALUE;
+			}
+			
+			JSONArray cats = ((JSONArray) item.get("categories")).getJSONArray(0);
+						
+			for (int i = 0 ; i < cats.length(); i++) {
+				categories.add(cats.get(i).toString());
+			}
+//			System.out.println(categories);
+			
+			insertItem(pItemInsert, asin, title, image, categories, description);
+			
+			if (count % 3000 == 0) {
+				TimeUnit.SECONDS.sleep(1);
+			}	
+			sb.setLength(0);
+		}
 	}
 
 	@Override
@@ -94,6 +205,29 @@ public class HW2StudentAnswer implements HW2API{
 		
 		// required format - if the asin does not exists return this value
 		System.out.println("not exists");
+		
+		BoundStatement bstmt = pItemSelect.bind().setString(0, asin);
+		ResultSet rs = session.execute(bstmt);
+		Row row = rs.one();
+		System.out.println(row);
+		
+		if (row == null) {
+			System.out.println("not exists");
+		}
+		
+		int count = 0;
+		while (row != null) {
+			System.out.println("asin: " + row.getString(0));
+			System.out.println("title: " + row.getString(1));
+			System.out.println("image: " + row.getString(2));
+			System.out.println("categories: " + row.getSet(3, String.class));
+			System.out.println("description: " + row.getString(4));
+			
+			row = rs.one();
+			count++;
+		}
+		
+		
 	}
 	
 	
