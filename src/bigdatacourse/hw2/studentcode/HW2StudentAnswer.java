@@ -41,7 +41,9 @@ public class HW2StudentAnswer implements HW2API{
 	
 	public static final String ITEMS_INSERT = "INSERT INTO items(asin, title, image, categories, description) VALUES (?, ?, ?, ?, ?)";
 	public static final String ITEMS_SELECT = "SELECT asin, title, image, categories, description FROM items WHERE asin = (?)";
-	
+	public static final String USER_REVIEW_INSERT = "INSERT INTO user_reviews(reviewerid, ts, reviewerName, asin, rating, summary, reviewText) VALUES (?, ?, ?, ?, ?, ?, ?)";
+	public static final String USER_REVIEW_SELECT = "SELECT ts, asin, reviewerid, reviewername, rating, summary, reviewtext FROM user_reviews WHERE reviewerid = (?)";
+
 	
 	// cassandra session
 	private CqlSession session;
@@ -50,6 +52,9 @@ public class HW2StudentAnswer implements HW2API{
 	//TODO: add here prepared statements variables
 	PreparedStatement pItemInsert;
 	PreparedStatement pItemSelect;
+	
+	PreparedStatement pUserReviewInsert;
+	PreparedStatement pUserReviewSelect;
 	
 	
 	// insert one item
@@ -62,6 +67,21 @@ public class HW2StudentAnswer implements HW2API{
 				.setString(4, description);
 		
 		// async
+		session.executeAsync(bstmt);
+	}
+	
+	// insert one user review
+	private void insertUserReview(PreparedStatement pstmt, String reviewerID, long ts, String reviewerName, String asin, float rating, String summary, String reviewText) {
+		BoundStatement bstmt = pUserReviewInsert.bind()
+				.setString(0, reviewerID)
+				.setInstant(1, Instant.ofEpochSecond(ts))
+				.setString(2, reviewerName)
+				.setString(3, asin)
+				.setFloat(4, rating)
+				.setString(5, summary)
+				.setString(6, reviewText);
+		
+		// sync
 		session.executeAsync(bstmt);
 	}
 	
@@ -116,6 +136,9 @@ public class HW2StudentAnswer implements HW2API{
 		
 		pItemInsert = session.prepare(ITEMS_INSERT);
 		pItemSelect = session.prepare(ITEMS_SELECT);
+		
+		pUserReviewInsert = session.prepare(USER_REVIEW_INSERT);
+		pUserReviewSelect = session.prepare(USER_REVIEW_SELECT);
 	}
 
 	@Override
@@ -189,45 +212,96 @@ public class HW2StudentAnswer implements HW2API{
 	public void loadReviews(String pathReviewsFile) throws Exception {
 		//TODO: implement this function
 		System.out.println("TODO: implement this function...");
+		
+		JSONObject item = new JSONObject();
+		
+		File file = new File(pathReviewsFile);
+		FileReader fr = new FileReader(file);
+		BufferedReader br = new BufferedReader(fr);
+		StringBuffer sb = new StringBuffer();
+		System.out.println(sb.toString());
+		String line;
+		
+		String asin;
+		String reveiwerID;
+		String reviewerName;
+		float rating;
+		long ts;
+		String summary;
+		String reviewText;
+		int count = 0;
+		
+		while ((line = br.readLine()) != null) {
+			count++;
+			System.out.print(count + ": ");
+			sb.append(line);
+			System.out.println(sb.toString());
+			item = new JSONObject(sb.toString());
+			System.out.println(item.toString());
+			
+			asin = item.getString("asin");
+			reveiwerID = item.getString("reviewerID");
+			try {
+				reviewerName = item.getString("reviewerName");
+			}
+			catch (org.json.JSONException e) {
+				reviewerName = NOT_AVAILABLE_VALUE;
+			}
+			
+			rating = (float)item.getDouble("overall");
+			ts = item.getLong("unixReviewTime");
+			summary = item.getString("summary");
+			reviewText = item.getString("reviewText");
+			
+			System.out.println("time: " + ts);
+			System.out.println(" ,asin: " + asin);
+			System.out.println(" ,reveiwerID: " + reveiwerID);
+			System.out.println(" ,reviewerName: " + reviewerName);
+			System.out.println(" ,rating: " + rating);
+			System.out.println(" ,summary: " + summary);
+			System.out.println(" ,reviewText: " + reviewText);
+			
+			insertUserReview(pUserReviewInsert, reveiwerID, ts, reviewerName, asin, rating, summary, reviewText);
+			
+			if (count % 3000 == 0) {
+				TimeUnit.SECONDS.sleep(1);
+			}	
+			sb.setLength(0);
+		}
+		
 	}
 
 	@Override
 	public void item(String asin) {
-		//TODO: implement this function
-		System.out.println("TODO: implement this function...");
-		
-		// required format - example for asin B005QB09TU
-		System.out.println("asin: " 		+ "B005QB09TU");
-		System.out.println("title: " 		+ "Circa Action Method Notebook");
-		System.out.println("image: " 		+ "http://ecx.images-amazon.com/images/I/41ZxT4Opx3L._SY300_.jpg");
-		System.out.println("categories: " 	+ new HashSet<String>(Arrays.asList("Notebooks & Writing Pads", "Office & School Supplies", "Office Products", "Paper")));
-		System.out.println("description: " 	+ "Circa + Behance = Productivity. The minute-to-minute flexibility of Circa note-taking meets the organizational power of the Action Method by Behance. The result is enhanced productivity, so you'll formulate strategies and achieve objectives even more efficiently with this Circa notebook and project planner. Read Steve's blog on the Behance/Levenger partnership Customize with your logo. Corporate pricing available. Please call 800-357-9991.");;
-		
-		// required format - if the asin does not exists return this value
-		System.out.println("not exists");
+//		//TODO: implement this function
+//		System.out.println("TODO: implement this function...");
+//		
+//		// required format - example for asin B005QB09TU
+//		System.out.println("asin: " 		+ "B005QB09TU");
+//		System.out.println("title: " 		+ "Circa Action Method Notebook");
+//		System.out.println("image: " 		+ "http://ecx.images-amazon.com/images/I/41ZxT4Opx3L._SY300_.jpg");
+//		System.out.println("categories: " 	+ new HashSet<String>(Arrays.asList("Notebooks & Writing Pads", "Office & School Supplies", "Office Products", "Paper")));
+//		System.out.println("description: " 	+ "Circa + Behance = Productivity. The minute-to-minute flexibility of Circa note-taking meets the organizational power of the Action Method by Behance. The result is enhanced productivity, so you'll formulate strategies and achieve objectives even more efficiently with this Circa notebook and project planner. Read Steve's blog on the Behance/Levenger partnership Customize with your logo. Corporate pricing available. Please call 800-357-9991.");;
+//		
+//		// required format - if the asin does not exists return this value
+//		System.out.println("not exists");
 		
 		BoundStatement bstmt = pItemSelect.bind().setString(0, asin);
 		ResultSet rs = session.execute(bstmt);
 		Row row = rs.one();
-		System.out.println(row);
 		
 		if (row == null) {
 			System.out.println("not exists");
 		}
 		
-		int count = 0;
 		while (row != null) {
 			System.out.println("asin: " + row.getString(0));
 			System.out.println("title: " + row.getString(1));
 			System.out.println("image: " + row.getString(2));
 			System.out.println("categories: " + row.getSet(3, String.class));
 			System.out.println("description: " + row.getString(4));
-			
 			row = rs.one();
-			count++;
 		}
-		
-		
 	}
 	
 	
@@ -237,26 +311,50 @@ public class HW2StudentAnswer implements HW2API{
 		System.out.println("TODO: implement this function...");
 		
 		
-		// required format - example for reviewerID A17OJCRPMYWXWV
-		System.out.println(	
-				"time: " 			+ Instant.ofEpochSecond(1362614400) + 
-				", asin: " 			+ "B005QDG2AI" 	+
-				", reviewerID: " 	+ "A17OJCRPMYWXWV" 	+
-				", reviewerName: " 	+ "Old Flour Child"	+
-				", rating: " 		+ 5 	+ 
-				", summary: " 		+ "excellent quality"	+
-				", reviewText: " 	+ "These cartridges are excellent .  I purchased them for the office where I work and they perform  like a dream.  They are a fraction of the price of the brand name cartridges.  I will order them again!");
-
-		System.out.println(	
-				"time: " 			+ Instant.ofEpochSecond(1360108800) + 
-				", asin: " 			+ "B003I89O6W" 	+
-				", reviewerID: " 	+ "A17OJCRPMYWXWV" 	+
-				", reviewerName: " 	+ "Old Flour Child"	+
-				", rating: " 		+ 5 	+ 
-				", summary: " 		+ "Checkbook Cover"	+
-				", reviewText: " 	+ "Purchased this for the owner of a small automotive repair business I work for.  The old one was being held together with duct tape.  When I saw this one on Amazon (where I look for almost everything first) and looked at the price, I knew this was the one.  Really nice and very sturdy.");
-
-		System.out.println("total reviews: " + 2);
+//		// required format - example for reviewerID A17OJCRPMYWXWV
+//		System.out.println(	
+//				"time: " 			+ Instant.ofEpochSecond(1362614400) + 
+//				", asin: " 			+ "B005QDG2AI" 	+
+//				", reviewerID: " 	+ "A17OJCRPMYWXWV" 	+
+//				", reviewerName: " 	+ "Old Flour Child"	+
+//				", rating: " 		+ 5 	+ 
+//				", summary: " 		+ "excellent quality"	+
+//				", reviewText: " 	+ "These cartridges are excellent .  I purchased them for the office where I work and they perform  like a dream.  They are a fraction of the price of the brand name cartridges.  I will order them again!");
+//
+//		System.out.println(	
+//				"time: " 			+ Instant.ofEpochSecond(1360108800) + 
+//				", asin: " 			+ "B003I89O6W" 	+
+//				", reviewerID: " 	+ "A17OJCRPMYWXWV" 	+
+//				", reviewerName: " 	+ "Old Flour Child"	+
+//				", rating: " 		+ 5 	+ 
+//				", summary: " 		+ "Checkbook Cover"	+
+//				", reviewText: " 	+ "Purchased this for the owner of a small automotive repair business I work for.  The old one was being held together with duct tape.  When I saw this one on Amazon (where I look for almost everything first) and looked at the price, I knew this was the one.  Really nice and very sturdy.");
+//
+//		System.out.println("total reviews: " + 2);
+		
+		BoundStatement bstmt = pUserReviewSelect.bind().setString(0, reviewerID);
+		ResultSet rs = session.execute(bstmt);
+		Row row = rs.one();
+		int count = 0;
+		
+		if (row == null) {
+			System.out.println("not exists");
+		}
+		
+		while (row != null) {
+			System.out.print("time: " + row.getInstant(0));
+			System.out.print(", asin: " + row.getString(1));
+			System.out.print(", reviewerID: " + row.getString(2));
+			System.out.print(", reviewerName: " + row.getString(3));
+			System.out.print(", rating: " + row.getFloat(4));
+			System.out.print(", summary: " + row.getString(5));
+			System.out.println(", reviewText: " + row.getString(6));
+			count++;
+			row = rs.one();
+		}
+		
+		System.out.println("total reviews: " + count);
+		
 	}
 
 	@Override
