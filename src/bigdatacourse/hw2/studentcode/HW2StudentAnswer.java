@@ -30,7 +30,7 @@ public class HW2StudentAnswer implements HW2API{
 	//TODO: add here create table and query designs 
 	
 	// items table
-	public static final String ITEMS_TABLE_CREATE = "CREATE TABLE items (\n"
+	public static final String ITEMS_TABLE_CREATE = "CREATE TABLE IF NOT EXISTS items (\n"
 			+ "asin text,\n"
 			+ "title text,\n"
 			+ "image text,\n"
@@ -39,10 +39,37 @@ public class HW2StudentAnswer implements HW2API{
 			+ "PRIMARY KEY (asin)\n"
 			+ ");";
 	
+	public static final String USER_REVIEW_TABLE_CREATE = "CREATE TABLE IF NOT EXISTS user_reviews (\n"
+			+ "reviewerID text,\n"
+			+ "ts timestamp,\n"
+			+ "reviewerName text,\n"
+			+ "asin text,\n"
+			+ "rating float,\n"
+			+ "summary text,\n"
+			+ "reviewText text,\n"
+			+ "PRIMARY KEY (reviewerID, ts)\n"
+			+ ") \n"
+			+ "WITH CLUSTERING ORDER BY (ts DESC);\n";
+	
+	public static final String ITEM_REVIEW_TABLE_CREATE = "CREATE TABLE IF NOT EXISTS item_reviews (\n"
+			+ "asin text,\n"
+			+ "ts timestamp,\n"
+			+ "reviewerID text,\n"
+			+ "reviewerName text,\n"
+			+ "rating float,\n"
+			+ "summary text,\n"
+			+ "reviewText text,\n"
+			+ "PRIMARY KEY (asin, ts)\n"
+			+ ") \n"
+			+ "WITH CLUSTERING ORDER BY (ts DESC);\n";
+	
+	
 	public static final String ITEMS_INSERT = "INSERT INTO items(asin, title, image, categories, description) VALUES (?, ?, ?, ?, ?)";
 	public static final String ITEMS_SELECT = "SELECT asin, title, image, categories, description FROM items WHERE asin = (?)";
 	public static final String USER_REVIEW_INSERT = "INSERT INTO user_reviews(reviewerid, ts, reviewerName, asin, rating, summary, reviewText) VALUES (?, ?, ?, ?, ?, ?, ?)";
 	public static final String USER_REVIEW_SELECT = "SELECT ts, asin, reviewerid, reviewername, rating, summary, reviewtext FROM user_reviews WHERE reviewerid = (?)";
+	public static final String ITEM_REVIEW_INSERT = "INSERT INTO item_reviews(asin, ts, reviewerid, reviewerName, rating, summary, reviewText) VALUES (?, ?, ?, ?, ?, ?, ?)";
+	public static final String ITEM_REVIEW_SELECT = "SELECT ts, asin, reviewerid, reviewername, rating, summary, reviewtext FROM item_reviews WHERE asin = (?)";
 
 	
 	// cassandra session
@@ -55,6 +82,9 @@ public class HW2StudentAnswer implements HW2API{
 	
 	PreparedStatement pUserReviewInsert;
 	PreparedStatement pUserReviewSelect;
+	
+	PreparedStatement pItemReviewInsert;
+	PreparedStatement pItemReviewSelect;
 	
 	
 	// insert one item
@@ -77,6 +107,21 @@ public class HW2StudentAnswer implements HW2API{
 				.setInstant(1, Instant.ofEpochSecond(ts))
 				.setString(2, reviewerName)
 				.setString(3, asin)
+				.setFloat(4, rating)
+				.setString(5, summary)
+				.setString(6, reviewText);
+		
+		// sync
+		session.executeAsync(bstmt);
+	}
+	
+	// insert one item review
+	private void insertItemReview(PreparedStatement pstmt, String asin, long ts, String reviewerID, String reviewerName, float rating, String summary, String reviewText) {
+		BoundStatement bstmt = pItemReviewInsert.bind()
+				.setString(0, asin)
+				.setInstant(1, Instant.ofEpochSecond(ts))
+				.setString(2, reviewerID)
+				.setString(3, reviewerName)
 				.setFloat(4, rating)
 				.setString(5, summary)
 				.setString(6, reviewText);
@@ -126,6 +171,8 @@ public class HW2StudentAnswer implements HW2API{
 		System.out.println("TODO: implement this function...");
 		
 		session.execute(ITEMS_TABLE_CREATE);
+		session.execute(USER_REVIEW_TABLE_CREATE);
+		session.execute(ITEM_REVIEW_TABLE_CREATE);
 		
 	}
 
@@ -139,6 +186,9 @@ public class HW2StudentAnswer implements HW2API{
 		
 		pUserReviewInsert = session.prepare(USER_REVIEW_INSERT);
 		pUserReviewSelect = session.prepare(USER_REVIEW_SELECT);
+		
+		pItemReviewInsert = session.prepare(ITEM_REVIEW_INSERT);
+		pItemReviewSelect = session.prepare(ITEM_REVIEW_SELECT);
 	}
 
 	@Override
@@ -207,7 +257,7 @@ public class HW2StudentAnswer implements HW2API{
 			sb.setLength(0);
 		}
 	}
-
+	
 	@Override
 	public void loadReviews(String pathReviewsFile) throws Exception {
 		//TODO: implement this function
@@ -223,7 +273,7 @@ public class HW2StudentAnswer implements HW2API{
 		String line;
 		
 		String asin;
-		String reveiwerID;
+		String reviewerID;
 		String reviewerName;
 		float rating;
 		long ts;
@@ -240,7 +290,7 @@ public class HW2StudentAnswer implements HW2API{
 			System.out.println(item.toString());
 			
 			asin = item.getString("asin");
-			reveiwerID = item.getString("reviewerID");
+			reviewerID = item.getString("reviewerID");
 			try {
 				reviewerName = item.getString("reviewerName");
 			}
@@ -255,15 +305,16 @@ public class HW2StudentAnswer implements HW2API{
 			
 			System.out.println("time: " + ts);
 			System.out.println(" ,asin: " + asin);
-			System.out.println(" ,reveiwerID: " + reveiwerID);
+			System.out.println(" ,reveiwerID: " + reviewerID);
 			System.out.println(" ,reviewerName: " + reviewerName);
 			System.out.println(" ,rating: " + rating);
 			System.out.println(" ,summary: " + summary);
 			System.out.println(" ,reviewText: " + reviewText);
 			
-			insertUserReview(pUserReviewInsert, reveiwerID, ts, reviewerName, asin, rating, summary, reviewText);
+			insertUserReview(pUserReviewInsert, reviewerID, ts, reviewerName, asin, rating, summary, reviewText);
+			insertItemReview(pItemReviewInsert, asin, ts, reviewerID, reviewerName, rating, summary, reviewText);
 			
-			if (count % 3000 == 0) {
+			if (count % 1500 == 0) {
 				TimeUnit.SECONDS.sleep(1);
 			}	
 			sb.setLength(0);
@@ -363,35 +414,60 @@ public class HW2StudentAnswer implements HW2API{
 		System.out.println("TODO: implement this function...");
 		
 		
-		// required format - example for asin B005QDQXGQ
-		System.out.println(	
-				"time: " 			+ Instant.ofEpochSecond(1391299200) + 
-				", asin: " 			+ "B005QDQXGQ" 	+
-				", reviewerID: " 	+ "A1I5J5RUJ5JB4B" 	+
-				", reviewerName: " 	+ "T. Taylor \"jediwife3\""	+
-				", rating: " 		+ 5 	+ 
-				", summary: " 		+ "Play and Learn"	+
-				", reviewText: " 	+ "The kids had a great time doing hot potato and then having to answer a question if they got stuck with the &#34;potato&#34;. The younger kids all just sat around turnin it to read it.");
-
-		System.out.println(	
-				"time: " 			+ Instant.ofEpochSecond(1390694400) + 
-				", asin: " 			+ "B005QDQXGQ" 	+
-				", reviewerID: " 	+ "AF2CSZ8IP8IPU" 	+
-				", reviewerName: " 	+ "Corey Valentine \"sue\""	+
-				", rating: " 		+ 1 	+ 
-				", summary: " 		+ "Not good"	+
-				", reviewText: " 	+ "This Was not worth 8 dollars would not recommend to others to buy for kids at that price do not buy");
-
-		System.out.println(	
-				"time: "			+ Instant.ofEpochSecond(1388275200) + 
-				", asin: " 			+ "B005QDQXGQ" 	+
-				", reviewerID: " 	+ "A27W10NHSXI625" 	+
-				", reviewerName: " 	+ "Beth"	+
-				", rating: " 		+ 2 	+ 
-				", summary: " 		+ "Way overpriced for a beach ball"	+
-				", reviewText: " 	+ "It was my own fault, I guess, for not thoroughly reading the description, but this is just a blow-up beach ball.  For that, I think it was very overpriced.  I thought at least I was getting one of those pre-inflated kickball-type balls that you find in the giant bins in the chain stores.  This did have a page of instructions for a few different games kids can play.  Still, I think kids know what to do when handed a ball, and there's a lot less you can do with a beach ball than a regular kickball, anyway.");
-
-		System.out.println("total reviews: " + 3);
+//		// required format - example for asin B005QDQXGQ
+//		System.out.println(	
+//				"time: " 			+ Instant.ofEpochSecond(1391299200) + 
+//				", asin: " 			+ "B005QDQXGQ" 	+
+//				", reviewerID: " 	+ "A1I5J5RUJ5JB4B" 	+
+//				", reviewerName: " 	+ "T. Taylor \"jediwife3\""	+
+//				", rating: " 		+ 5 	+ 
+//				", summary: " 		+ "Play and Learn"	+
+//				", reviewText: " 	+ "The kids had a great time doing hot potato and then having to answer a question if they got stuck with the &#34;potato&#34;. The younger kids all just sat around turnin it to read it.");
+//
+//		System.out.println(	
+//				"time: " 			+ Instant.ofEpochSecond(1390694400) + 
+//				", asin: " 			+ "B005QDQXGQ" 	+
+//				", reviewerID: " 	+ "AF2CSZ8IP8IPU" 	+
+//				", reviewerName: " 	+ "Corey Valentine \"sue\""	+
+//				", rating: " 		+ 1 	+ 
+//				", summary: " 		+ "Not good"	+
+//				", reviewText: " 	+ "This Was not worth 8 dollars would not recommend to others to buy for kids at that price do not buy");
+//
+//		System.out.println(	
+//				"time: "			+ Instant.ofEpochSecond(1388275200) + 
+//				", asin: " 			+ "B005QDQXGQ" 	+
+//				", reviewerID: " 	+ "A27W10NHSXI625" 	+
+//				", reviewerName: " 	+ "Beth"	+
+//				", rating: " 		+ 2 	+ 
+//				", summary: " 		+ "Way overpriced for a beach ball"	+
+//				", reviewText: " 	+ "It was my own fault, I guess, for not thoroughly reading the description, but this is just a blow-up beach ball.  For that, I think it was very overpriced.  I thought at least I was getting one of those pre-inflated kickball-type balls that you find in the giant bins in the chain stores.  This did have a page of instructions for a few different games kids can play.  Still, I think kids know what to do when handed a ball, and there's a lot less you can do with a beach ball than a regular kickball, anyway.");
+//
+//		System.out.println("total reviews: " + 3);
+		
+		
+		BoundStatement bstmt = pItemReviewSelect.bind().setString(0, asin);
+		ResultSet rs = session.execute(bstmt);
+		Row row = rs.one();
+		int count = 0;
+		
+		if (row == null) {
+			System.out.println("not exists");
+		}
+		
+		while (row != null) {
+			System.out.print("time: " + row.getInstant(0));
+			System.out.print(", asin: " + row.getString(1));
+			System.out.print(", reviewerID: " + row.getString(2));
+			System.out.print(", reviewerName: " + row.getString(3));
+			System.out.print(", rating: " + row.getFloat(4));
+			System.out.print(", summary: " + row.getString(5));
+			System.out.println(", reviewText: " + row.getString(6));
+			count++;
+			row = rs.one();
+		}
+		
+		System.out.println("total reviews: " + count);
+		
 	}
 
 
