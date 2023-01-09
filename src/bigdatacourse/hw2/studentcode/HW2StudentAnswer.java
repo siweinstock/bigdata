@@ -28,7 +28,13 @@ public class HW2StudentAnswer implements HW2API{
 	public static final String		NOT_AVAILABLE_VALUE 	=		"na";
 
 	// CQL stuff
-	public static final String ITEMS_TABLE_CREATE = "CREATE TABLE IF NOT EXISTS items (\n"
+	
+	private static final String		TABLE_ITEMS = "items";
+	private static final String		TABLE_ITEM_REVIEWS = "item_reviews";
+	private static final String		TABLE_USER_REVIEWS = "user_reviews";
+	
+	
+	public static final String ITEMS_TABLE_CREATE = "CREATE TABLE IF NOT EXISTS " + TABLE_ITEMS + " (\n"
 			+ "asin text,\n"
 			+ "title text,\n"
 			+ "image text,\n"
@@ -37,7 +43,7 @@ public class HW2StudentAnswer implements HW2API{
 			+ "PRIMARY KEY (asin)\n"
 			+ ");";
 	
-	public static final String USER_REVIEW_TABLE_CREATE = "CREATE TABLE IF NOT EXISTS user_reviews (\n"
+	public static final String USER_REVIEW_TABLE_CREATE = "CREATE TABLE IF NOT EXISTS " + TABLE_USER_REVIEWS + " (\n"
 			+ "reviewerID text,\n"
 			+ "ts timestamp,\n"
 			+ "reviewerName text,\n"
@@ -45,11 +51,11 @@ public class HW2StudentAnswer implements HW2API{
 			+ "rating float,\n"
 			+ "summary text,\n"
 			+ "reviewText text,\n"
-			+ "PRIMARY KEY (reviewerID, ts)\n"
+			+ "PRIMARY KEY ((reviewerID), ts, asin)\n"
 			+ ") \n"
-			+ "WITH CLUSTERING ORDER BY (ts DESC);\n";
+			+ "WITH CLUSTERING ORDER BY (ts DESC, asin ASC);\n";
 	
-	public static final String ITEM_REVIEW_TABLE_CREATE = "CREATE TABLE IF NOT EXISTS item_reviews (\n"
+	public static final String ITEM_REVIEW_TABLE_CREATE = "CREATE TABLE IF NOT EXISTS " + TABLE_ITEM_REVIEWS + " (\n"
 			+ "asin text,\n"
 			+ "ts timestamp,\n"
 			+ "reviewerID text,\n"
@@ -57,19 +63,19 @@ public class HW2StudentAnswer implements HW2API{
 			+ "rating float,\n"
 			+ "summary text,\n"
 			+ "reviewText text,\n"
-			+ "PRIMARY KEY (asin, ts)\n"
+			+ "PRIMARY KEY ((asin), ts, reviewerID)\n"
 			+ ") \n"
-			+ "WITH CLUSTERING ORDER BY (ts DESC);\n";
+			+ "WITH CLUSTERING ORDER BY (ts DESC, reviewerID ASC);\n";
 	
 	
-	public static final String ITEMS_INSERT = "INSERT INTO items(asin, title, image, categories, description) VALUES (?, ?, ?, ?, ?)";
-	public static final String ITEMS_SELECT = "SELECT asin, title, image, categories, description FROM items WHERE asin = (?)";
+	public static final String ITEMS_INSERT = "INSERT INTO " + TABLE_ITEMS + "(asin, title, image, categories, description) VALUES (?, ?, ?, ?, ?)";
+	public static final String ITEMS_SELECT = "SELECT asin, title, image, categories, description FROM " + TABLE_ITEMS + " WHERE asin = (?)";
 	
-	public static final String USER_REVIEW_INSERT = "INSERT INTO user_reviews(reviewerid, ts, reviewerName, asin, rating, summary, reviewText) VALUES (?, ?, ?, ?, ?, ?, ?)";
-	public static final String USER_REVIEW_SELECT = "SELECT ts, asin, reviewerid, reviewername, rating, summary, reviewtext FROM user_reviews WHERE reviewerid = (?)";
+	public static final String USER_REVIEW_INSERT = "INSERT INTO " + TABLE_USER_REVIEWS + "(reviewerid, ts, reviewerName, asin, rating, summary, reviewText) VALUES (?, ?, ?, ?, ?, ?, ?)";
+	public static final String USER_REVIEW_SELECT = "SELECT ts, asin, reviewerid, reviewername, rating, summary, reviewtext FROM " + TABLE_USER_REVIEWS + " WHERE reviewerid = (?)";
 	
-	public static final String ITEM_REVIEW_INSERT = "INSERT INTO item_reviews(asin, ts, reviewerid, reviewerName, rating, summary, reviewText) VALUES (?, ?, ?, ?, ?, ?, ?)";
-	public static final String ITEM_REVIEW_SELECT = "SELECT ts, asin, reviewerid, reviewername, rating, summary, reviewtext FROM item_reviews WHERE asin = (?)";
+	public static final String ITEM_REVIEW_INSERT = "INSERT INTO " + TABLE_ITEM_REVIEWS + "(asin, ts, reviewerid, reviewerName, rating, summary, reviewText) VALUES (?, ?, ?, ?, ?, ?, ?)";
+	public static final String ITEM_REVIEW_SELECT = "SELECT ts, asin, reviewerid, reviewername, rating, summary, reviewtext FROM " + TABLE_ITEM_REVIEWS + " WHERE asin = (?)";
 
 	
 	// cassandra session
@@ -210,6 +216,7 @@ public class HW2StudentAnswer implements HW2API{
 		String image;
 		String description;
 		int count = 0;
+		int catIn;
 		
 		while ((line = br.readLine()) != null) {
 			count++;
@@ -241,10 +248,22 @@ public class HW2StudentAnswer implements HW2API{
 				description = NOT_AVAILABLE_VALUE;
 			}
 			
-			JSONArray cats = ((JSONArray) item.get("categories")).getJSONArray(0);
-						
-			for (int i = 0 ; i < cats.length(); i++) {
-				categories.add(cats.get(i).toString());
+			JSONArray cats; //= ((JSONArray) item.get("categories")).getJSONArray(0);
+			catIn = 0;
+			
+			// get all lists of categories and "flatten"
+			while (true) {
+				try {
+					cats = ((JSONArray) item.get("categories")).getJSONArray(catIn);
+					catIn++;
+					
+					for (int i = 0 ; i < cats.length(); i++) {
+						categories.add(cats.get(i).toString());
+					}
+				}
+				catch (org.json.JSONException e) {
+					break;
+				}				
 			}
 
 			insertItem(pItemInsert, asin, title, image, categories, description);
