@@ -3,12 +3,16 @@ package bigdatacourse.hw2.studentcode;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.TreeSet;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 import org.json.JSONArray;
@@ -92,52 +96,6 @@ public class HW2StudentAnswer implements HW2API{
 	PreparedStatement pItemReviewSelect;
 	
 	
-	// insert one item
-	private void insertItem(PreparedStatement pstmt, String asin, String title, String image, Set<String> categories, String description) {
-		BoundStatement bstmt = pItemInsert.bind()
-				.setString(0, asin)
-				.setString(1, title)
-				.setString(2, image)
-				.setSet(3, categories, String.class)	// we know set<text> is not recommended but we used it since the # of cat is bounded and not expected to change often (if at all)
-				.setString(4, description);
-		
-		// async
-		session.executeAsync(bstmt);
-	}
-	
-	
-	// insert one user review
-	private void insertUserReview(PreparedStatement pstmt, String reviewerID, long ts, String reviewerName, String asin, float rating, String summary, String reviewText) {
-		BoundStatement bstmt = pUserReviewInsert.bind()
-				.setString(0, reviewerID)
-				.setInstant(1, Instant.ofEpochSecond(ts))
-				.setString(2, reviewerName)
-				.setString(3, asin)
-				.setFloat(4, rating)
-				.setString(5, summary)
-				.setString(6, reviewText);
-		
-		// async
-		session.executeAsync(bstmt);
-	}
-	
-	
-	// insert one item review
-	private void insertItemReview(PreparedStatement pstmt, String asin, long ts, String reviewerID, String reviewerName, float rating, String summary, String reviewText) {
-		BoundStatement bstmt = pItemReviewInsert.bind()
-				.setString(0, asin)
-				.setInstant(1, Instant.ofEpochSecond(ts))
-				.setString(2, reviewerID)
-				.setString(3, reviewerName)
-				.setFloat(4, rating)
-				.setString(5, summary)
-				.setString(6, reviewText);
-		
-		// async
-		session.executeAsync(bstmt);
-	}
-	
-	
 	@Override
 	public void connect(String pathAstraDBBundleFile, String username, String password, String keyspace) {
 		if (session != null) {
@@ -201,145 +159,101 @@ public class HW2StudentAnswer implements HW2API{
 	
 	@Override
 	public void loadItems(String pathItemsFile) throws Exception {
-		System.out.print("Loading items");
-		
-		JSONObject item = new JSONObject();
-		File file = new File(pathItemsFile);
-		FileReader fr = new FileReader(file);
-		BufferedReader br = new BufferedReader(fr);
-		StringBuffer sb = new StringBuffer();
-		String line;
-		
-		Set<String> categories = new HashSet<>();
-		String asin;
-		String title;
-		String image;
-		String description;
-		int count = 0;
+        int maxThreads	= 250;
+        long c=0;
+        
+        String asin;
+        String desc;
+        String title;
+        String img;
+        JSONObject json;
+        Set<String> categories = new HashSet<>();
+        
+        int count = 0;
 		int catIn;
-		
-		while ((line = br.readLine()) != null) {
-			count++;
-//			System.out.print(count + ": ");
-			categories.clear();
-			sb.append(line);
-//			System.out.println(sb.toString());
-			item = new JSONObject(sb.toString());
-			asin = item.getString("asin"); // UID must be present, no need for try block
-			
-			try {
-				title = item.getString("title");
-			}
-			catch (org.json.JSONException e) {
-				title = NOT_AVAILABLE_VALUE;
-			}
-			
-			try {
-				image = item.getString("imUrl");
-			}
-			catch (org.json.JSONException e) {
-				image = NOT_AVAILABLE_VALUE;
-			}
-			
-			try {
-				description = item.getString("description");
-			}
-			catch (org.json.JSONException e) {
-				description = NOT_AVAILABLE_VALUE;
-			}
-			
-			JSONArray cats; //= ((JSONArray) item.get("categories")).getJSONArray(0);
-			catIn = 0;
-			
-			// get all lists of categories and "flatten"
-			while (true) {
-				try {
-					cats = ((JSONArray) item.get("categories")).getJSONArray(catIn);
-					catIn++;
-					
-					for (int i = 0 ; i < cats.length(); i++) {
-						categories.add(cats.get(i).toString());
-					}
-				}
-				catch (org.json.JSONException e) {
-					break;
-				}				
-			}
+        
+        // creating the thread factors
+        ExecutorService executor = Executors.newFixedThreadPool(maxThreads);
+        BoundStatement bstmt;
+        File file = new File(pathItemsFile);
+		try {
+			String content = new String(Files.readAllBytes(Paths.get(file.toURI())));
+			for (String row : content.split("\n")){
+			    c++;
+			    final long x = c;
+			    
+				json = new JSONObject(row);
+				
+				asin = json.getString("asin"); // UID must be present, no need for try block
+                
+    			JSONArray cats; //= ((JSONArray) item.get("categories")).getJSONArray(0);
+    			catIn = 0;
+                
+    			while (true) {
+    				try {
+    					cats = (JSONArray) ((JSONArray) json.get("categories")).get(catIn);
+    					catIn++;
+    					
+    					for (int i = 0 ; i < cats.length(); i++) {
+    						categories.add(cats.get(i).toString());
+    					}
+    				}
+    				catch (org.json.JSONException e) {
+    					break;
+    				}				
+    			}
+    			
+                try {
+                	img = json.getString("imUrl");
+                }
+                catch (Exception e){
+                	img = NOT_AVAILABLE_VALUE;
+                }
+                
+                try {
+                	title = json.getString("title");
+                }
+                catch (Exception e){
+                	title = NOT_AVAILABLE_VALUE;
+                }
+                
+                try {
+                	desc = json.getString("description");
+                }
+                catch (Exception e){
+                	desc = NOT_AVAILABLE_VALUE;
+                }
+                
+                
+        		bstmt = pItemInsert.bind()
+        				.setString(0, asin)
+        				.setString(1, title)
+        				.setString(2, img)
+        				.setSet(3, categories, String.class)
+        				.setString(4, desc);
+                
 
-			insertItem(pItemInsert, asin, title, image, categories, description);
-			
-			// avoid reaching astra's limit
-			if (count % 3000 == 0) {
-				System.out.print(".");
-				TimeUnit.SECONDS.sleep(1);
-			}	
-			
-			sb.setLength(0);
+                final BoundStatement bstmt1 = bstmt;
+                executor.execute(new Runnable() {
+                    @Override
+                    public void run() {
+                        session.execute(bstmt1);
+                        System.out.println("version 3 - added " + x);
+                    }
+                });
+                
+                categories.clear();
+                
+			}
 		}
-		
-		System.out.println("DONE.");
-	}
-	
-	
-	@Override
-	public void loadReviews(String pathReviewsFile) throws Exception {
-		System.out.print("Loading reviews");
-		
-		JSONObject item = new JSONObject();
-		
-		File file = new File(pathReviewsFile);
-		FileReader fr = new FileReader(file);
-		BufferedReader br = new BufferedReader(fr);
-		StringBuffer sb = new StringBuffer();
-//		System.out.println(sb.toString());
-		String line;
-		
-		String asin;
-		String reviewerID;
-		String reviewerName;
-		float rating;
-		long ts;
-		String summary;
-		String reviewText;
-		int count = 0;
-		
-		while ((line = br.readLine()) != null) {
-			count++;
-//			System.out.print(count + ": ");
-			sb.append(line);
-//			System.out.println(sb.toString());
-			item = new JSONObject(sb.toString());
-//			System.out.println(item.toString());
-			
-			asin = item.getString("asin");
-			reviewerID = item.getString("reviewerID");
-			try {
-				reviewerName = item.getString("reviewerName");
-			}
-			catch (org.json.JSONException e) {
-				reviewerName = NOT_AVAILABLE_VALUE;
-			}
-			
-			rating = (float)item.getDouble("overall");
-			ts = item.getLong("unixReviewTime");
-			summary = item.getString("summary");
-			reviewText = item.getString("reviewText");
-			
-			insertUserReview(pUserReviewInsert, reviewerID, ts, reviewerName, asin, rating, summary, reviewText);
-			insertItemReview(pItemReviewInsert, asin, ts, reviewerID, reviewerName, rating, summary, reviewText);
-			
-			// avoid reaching astra's limit
-			if (count % 1500 == 0) {
-				System.out.print(".");
-				TimeUnit.SECONDS.sleep(1);
-			}
-			
-			sb.setLength(0);
+		catch (IOException e) {
+			e.printStackTrace();
 		}
-		
-		System.out.println("DONE.");
-	}
 
+		executor.shutdown();
+		executor.awaitTermination(1, TimeUnit.HOURS);
+	}
+			
 	
 	@Override
 	public void item(String asin) {
@@ -389,6 +303,156 @@ public class HW2StudentAnswer implements HW2API{
 		
 	}
 
+	
+	@Override
+	public void loadReviews(String pathReviewsFile) throws Exception {
+		// we tried to go over the file once and insert into both tables, but it caused errors and this is the compromise
+		loadReviewsByItem(pathReviewsFile);
+		loadReviewsByUser(pathReviewsFile);
+		System.out.println("DONE.");
+	}
+	
+	
+	private void loadReviewsByItem(String pathReviewsFile) throws Exception {
+        int maxThreads	= 250;
+        long c=0;
+
+        // creating the thread factors
+        ExecutorService executor = Executors.newFixedThreadPool(maxThreads);
+        BoundStatement bstmt;
+
+        JSONObject json;
+        String rname;
+        String summary;
+        String reviewText;
+        try {
+            BufferedReader reader = new BufferedReader(new FileReader(pathReviewsFile));
+            String line = reader.readLine();
+            while (line != null) {
+                c++;
+                final long x = c;
+                json = new JSONObject(line);
+
+                try {
+                	rname = json.getString("reviewerName");
+                }
+                catch (Exception e){
+                	rname = NOT_AVAILABLE_VALUE;
+                }
+                
+                try {
+                	summary = json.getString("summary");
+                }
+                catch (Exception e){
+                	summary = NOT_AVAILABLE_VALUE;
+                }
+                
+                try {
+                	reviewText = json.getString("reviewText");
+                }
+                catch (Exception e){
+                	reviewText = NOT_AVAILABLE_VALUE;
+                }
+                
+                bstmt = pItemReviewInsert.bind()
+                		.setString(0, json.getString("asin"))
+                        .setInstant(1, Instant.ofEpochSecond(json.getLong("unixReviewTime")))
+                        .setString(2, json.getString("reviewerID"))
+                        .setString(3, rname)
+                        .setFloat(4, (float)json.getDouble("overall"))
+                        .setString(5, summary)
+                        .setString(6, reviewText);
+                final BoundStatement bound = bstmt;
+                executor.execute(new Runnable() {
+                    @Override
+                    public void run() {
+                        session.execute(bound);
+                        System.out.println("ReviewsByItem - added " + x);
+                    }
+                });
+                
+                line = reader.readLine();
+            }
+        }
+        catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        executor.shutdown();
+        executor.awaitTermination(1, TimeUnit.HOURS);
+	}
+
+	
+	private void loadReviewsByUser(String pathReviewsFile) throws Exception {
+        int maxThreads	= 250;
+        long c=0;
+
+        // creating the thread factors
+        ExecutorService executor = Executors.newFixedThreadPool(maxThreads);
+        BoundStatement bstmt;
+        
+        JSONObject json;
+        String rname;
+        String summary;
+        String reviewText;
+        try {
+            BufferedReader reader = new BufferedReader(new FileReader(pathReviewsFile));
+            String line = reader.readLine();
+            while (line != null) {
+                c++;
+                final long x = c;
+                json = new JSONObject(line);
+
+                try {
+                	rname = json.getString("reviewerName");
+                }
+                catch (Exception e){
+                	rname = NOT_AVAILABLE_VALUE;
+                }
+                
+                try {
+                	summary = json.getString("summary");
+                }
+                catch (Exception e){
+                	summary = NOT_AVAILABLE_VALUE;
+                }
+                
+                try {
+                	reviewText = json.getString("reviewText");
+                }
+                catch (Exception e){
+                	reviewText = NOT_AVAILABLE_VALUE;
+                }
+                
+                
+                bstmt = pUserReviewInsert.bind()
+                		.setString(0, json.getString("reviewerID"))
+                        .setInstant(1, Instant.ofEpochSecond(json.getLong("unixReviewTime")))
+                        .setString(2, rname)
+                        .setString(3, json.getString("asin"))
+                        .setFloat(4, (float)json.getDouble("overall"))
+                        .setString(5, summary)
+                        .setString(6, reviewText);
+                final BoundStatement bound = bstmt;
+
+                executor.execute(new Runnable() {
+                    @Override
+                    public void run() {
+                        session.execute(bound);
+                        System.out.println("ReviewsByUser - added " + x);
+                    }
+                });
+                line = reader.readLine();
+            }
+        }
+        catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        executor.shutdown();
+        executor.awaitTermination(1, TimeUnit.HOURS);
+	}
+	
 	
 	@Override
 	public void itemReviews(String asin) {		
